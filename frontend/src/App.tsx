@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import UgcGenerator from './views/UgcGenerator';
-import PromptLibrary from './views/PromptLibrary';
+import {PromptLibrary} from './views/PromptLibrary';
 
 export default function App() {
   return (

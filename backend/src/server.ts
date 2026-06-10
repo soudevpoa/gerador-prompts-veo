@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { gerarPrompts } from './config/controllers/promptController';
 import { gerarImagemInfluencerEstatica } from './config/controllers/promptController';
+import { prisma } from './config/prisma';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -44,6 +45,55 @@ app.listen(PORT, () => {
   console.log(`🚀 Backend com suporte a Visão computacional rodando na porta ${PORT}`);
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Backend com suporte a Visão computacional rodando na porta ${PORT}`);
+// ==========================================
+// 📚 ENDPOINTS DA BIBLIOTECA DE PROMPTS (POSTGRESQL)
+// ==========================================
+
+// 🟢 LISTAR TODOS OS PROMPTS (GET)
+app.get('/api/prompts', async (req, res) => {
+  try {
+    const prompts = await prisma.prompt.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(prompts);
+  } catch (error) {
+    console.error('Erro ao buscar prompts no Supabase:', error);
+    res.status(500).json({ error: 'Erro interno ao buscar os prompts da biblioteca.' });
+  }
+});
+
+// 🔵 CRIAR UM NOVO PROMPT (POST)
+app.post('/api/prompts', async (req, res) => {
+  try {
+    const { titulo, tipo, fragmento } = req.body;
+
+    if (!titulo || !tipo || !fragmento) {
+      return res.status(400).json({ error: 'Todos os campos (titulo, tipo, fragmento) são obrigatórios.' });
+    }
+
+    const novoPrompt = await prisma.prompt.create({
+      data: { titulo, tipo, fragmento },
+    });
+
+    res.status(201).json(novoPrompt);
+  } catch (error) {
+    console.error('Erro ao salvar prompt no Supabase:', error);
+    res.status(500).json({ error: 'Erro interno ao salvar novo prompt.' });
+  }
+});
+
+// 🔴 REMOVER UM PROMPT (DELETE)
+app.delete('/api/prompts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await prisma.prompt.delete({
+      where: { id },
+    });
+
+    res.json({ message: 'Prompt removido com sucesso do banco de dados.' });
+  } catch (error) {
+    console.error('Erro ao deletar prompt no Supabase:', error);
+    res.status(500).json({ error: 'Erro interno ao remover o prompt.' });
+  }
 });

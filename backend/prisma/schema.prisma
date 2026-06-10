@@ -1,0 +1,32 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+
+}
+generator client {
+  provider = "prisma-client-js"
+}
+// 📚 MODELO DA BIBLIOTECA DE PROMPTS
+model Prompt {
+  id        String   @id @default(uuid())
+  titulo    String
+  tipo      String   // "Visual" ou "Falado"
+  fragmento String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@map("prompts") // Cria a tabela no banco com nome minúsculo
+}
+
+// 🎬 MODELO DO HISTÓRICO DE GERAÇÕES UGC
+model VideoHistory {
+  id              String   @id @default(uuid())
+  produto         String
+  avatarDescricao String   @db.Text
+  ambiente        String
+  tipoVideo       String
+  duracao         String
+  promptsGerados  Json     // Salva o array de cenas completo retornado pela OpenAI
+  createdAt       DateTime @default(now())
+
+  @@map("video_histories")
+}
