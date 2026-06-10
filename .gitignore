@@ -1,0 +1,13 @@
+# Dependências pesadas (NUNCA sobem pro Git)
+node_modules/
+dist/
+build/
+.vite/
+
+# Arquivos de ambiente com suas chaves de API secretas
+.env
+.env.local
+
+# Arquivos do sistema operacional
+.DS_Store
+Thumbs.db
