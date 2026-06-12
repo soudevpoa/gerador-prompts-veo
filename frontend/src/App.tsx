@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import UgcGenerator from './views/UgcGenerator';
-import {PromptLibrary} from './views/PromptLibrary';
+import { PromptLibrary } from './views/PromptLibrary';
+import VideoHistory from './views/VideoHistory'; // 🔥 1. Importa a nova tela de histórico que criamos
 
 export default function App() {
   return (
@@ -20,8 +21,10 @@ export default function App() {
             {/* Nova Rota para a Biblioteca de Prompts */}
             <Route path="/biblioteca" element={<PromptLibrary />} />
             
+            {/* 🔥 2. Substitui o fallback antigo pela nossa tela real conectada ao Supabase! */}
+            <Route path="/historico" element={<VideoHistory />} />
+            
             {/* Fallbacks amigáveis para as outras abas do roteador */}
-            <Route path="/historico" element={<div className="p-8 text-gray-400">Tela de Histórico em desenvolvimento...</div>} />
             <Route path="/configuracoes" element={<div className="p-8 text-gray-400">Tela de Configurações em desenvolvimento...</div>} />
           </Routes>
         </div>

@@ -20,11 +20,11 @@ export default function UgcGenerator() {
 
   const [avatarSelecionado, setAvatarSelecionado] = useState('fitness_woman');
   const [ambiente, setAmbiente] = useState('Modern bright gym studio');
-  
+
   // Estado que armazena a string Base64 da imagem real gerada pelo Imagen 3
   const [promptImagemGerado, setPromptImagemGerado] = useState<string | null>(null);
   const [copiedPromptImagem, setCopiedPromptImagem] = useState(false);
-  
+
   // Estados auxiliares de segurança para guardar os textos limpos se necessário
   const [promptTextoGerado, setPromptTextoGerado] = useState<string | null>(null);
 
@@ -64,10 +64,10 @@ export default function UgcGenerator() {
   };
 
   // PASSO 1: CRIA A FOTO DA MODELO COM O IMAGEN 3 (PREVENÇÃO DE ESTAMPAS)
-const handleGerarImagemBase = async () => {
+  const handleGerarImagemBase = async () => {
     if (!produto) return alert('Por favor, digite o nome do produto antes.');
     setLoadingImagem(true);
-    setPromptImagemGerado(null); 
+    setPromptImagemGerado(null);
     setPromptTextoGerado(null);
 
     try {
@@ -82,7 +82,7 @@ const handleGerarImagemBase = async () => {
         body: formData,
       });
       const data = await response.json();
-      
+
       // Captura o prompt gerado pela inteligência do Gemini
       if (data.promptTextoPronto) {
         setPromptImagemGerado(data.promptTextoPronto);
@@ -96,13 +96,13 @@ const handleGerarImagemBase = async () => {
     }
   };
 
-  // PASSO 2: GERA OS PROMPTS DO ROTEIRO ADAPTATIVO COM ÁUDIO INTEGRADO
+  // 🔥 PASSO 2 CORRIGIDO E SINCRONIZADO COM O SUPABASE
   const handleGerarRoteiro = async () => {
-    if (!produto) return alert('Por favor, digite o nome ou descrição do produto.');
-    setResultados([]);
-    setLoading(true);
+    if (!produto) return alert('Por favor, preencha o nome do produto primeiro.');
 
+    setLoading(true);
     try {
+      // 1. Criamos a variável formData que estava faltando para a API!
       const formData = new FormData();
       formData.append('produto', produto);
       formData.append('avatarDescricao', getAvatarDescricaoTexto());
@@ -111,14 +111,55 @@ const handleGerarImagemBase = async () => {
       formData.append('duracao', duracao);
       if (imageFile) formData.append('imagem', imageFile);
 
+      // 2. Dispara a requisição oficial para a OpenAI no Backend
       const response = await fetch('http://localhost:3001/api/gerar-prompts', {
         method: 'POST',
-        body: formData,
+        body: formData // <-- Agora a variável existe e vai certinho!
       });
+
+      if (!response.ok) throw new Error('Falha ao gerar roteiro na API');
       const data = await response.json();
-      if (data.prompts) setResultados(data.prompts);
-    } catch (err) {
-      alert('Erro ao conectar com o servidor.');
+
+      // 3. Atualiza o estado da tela para exibir o roteiro na interface
+      if (data.prompts && data.prompts.length > 0) {
+        setResultados(data.prompts);
+
+        // 4. Criamos o objeto limpo para salvar no histórico do Supabase
+        const dadosParaSalvar = {
+          produto: produto || "Produto Sem Nome",
+          avatarSelecionado: avatarSelecionado || "fitness_woman",
+          ambiente: ambiente || "Casual background",
+          tipoVideo: tipoVideo || "UGC",
+          duracao: duracao || "Curto",
+          resultados: data.prompts
+        };
+
+        console.log("📦 Enviando dados para o histórico:", dadosParaSalvar);
+
+        // 5. Faz o disparo de persistência na nuvem
+        try {
+          const saveResponse = await fetch('http://localhost:3001/api/videos', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dadosParaSalvar)
+          });
+
+          if (!saveResponse.ok) {
+            const errorData = await saveResponse.json();
+            console.error("❌ Erro retornado pelo servidor:", errorData);
+          } else {
+            console.log("🎥 Roteiro salvo com sucesso no histórico do Supabase!");
+          }
+        } catch (err) {
+          console.error("❌ Erro na conexão de salvamento:", err);
+        }
+      } else {
+        alert('A API não retornou os prompts no formato esperado.');
+      }
+
+    } catch (error) {
+      console.error("Erro ao gerar ou salvar roteiro:", error);
+      alert('Não foi possível gerar o roteiro adaptativo.');
     } finally {
       setLoading(false);
     }
@@ -149,7 +190,7 @@ const handleGerarImagemBase = async () => {
       </header>
 
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
-        
+
         {/* Painel de Configurações - Esquerda */}
         <section className="lg:col-span-5 bg-[#111827] p-6 rounded-xl border border-gray-800 shadow-xl flex flex-col gap-6">
           <div>
@@ -173,7 +214,7 @@ const handleGerarImagemBase = async () => {
                 </button>
               </div>
             )}
-            <input 
+            <input
               type="text"
               placeholder="Nome exato do produto (ex: Calça Legging Flare Preta)"
               value={produto}
@@ -192,11 +233,10 @@ const handleGerarImagemBase = async () => {
                   key={avatar.id}
                   type="button"
                   onClick={() => setAvatarSelecionado(avatar.id)}
-                  className={`p-2.5 text-xs font-semibold rounded-lg border text-left cursor-pointer transition-all ${
-                    avatarSelecionado === avatar.id 
-                      ? 'border-purple-500 bg-purple-950/40 text-purple-400' 
-                      : 'border-gray-700 bg-[#1f2937] hover:border-gray-600 text-gray-400'
-                  }`}
+                  className={`p-2.5 text-xs font-semibold rounded-lg border text-left cursor-pointer transition-all ${avatarSelecionado === avatar.id
+                    ? 'border-purple-500 bg-purple-950/40 text-purple-400'
+                    : 'border-gray-700 bg-[#1f2937] hover:border-gray-600 text-gray-400'
+                    }`}
                 >
                   <div className="font-bold">{avatar.nome}</div>
                   <div className="text-[10px] text-gray-500 font-normal truncate">{avatar.info}</div>
@@ -215,11 +255,10 @@ const handleGerarImagemBase = async () => {
                   key={amb.id}
                   type="button"
                   onClick={() => setAmbiente(amb.id)}
-                  className={`p-2.5 text-xs font-semibold rounded-lg border text-left cursor-pointer transition-all ${
-                    ambiente === amb.id 
-                      ? 'border-emerald-500 bg-emerald-950/30 text-emerald-400' 
-                      : 'border-gray-700 bg-[#1f2937] hover:border-gray-600 text-gray-400'
-                  }`}
+                  className={`p-2.5 text-xs font-semibold rounded-lg border text-left cursor-pointer transition-all ${ambiente === amb.id
+                    ? 'border-emerald-500 bg-emerald-950/30 text-emerald-400'
+                    : 'border-gray-700 bg-[#1f2937] hover:border-gray-600 text-gray-400'
+                    }`}
                 >
                   {amb.nome}
                 </button>
@@ -274,8 +313,7 @@ const handleGerarImagemBase = async () => {
 
         {/* Coluna Direita */}
         <section className="lg:col-span-7 flex flex-col gap-6">
-          
-          
+
           {/* PAINEL DE CÓPIA DO PROMPT DA MODELO ESTÁTICA */}
           {promptImagemGerado && (
             <div className="bg-[#111827] rounded-xl border border-emerald-500/30 p-5 shadow-xl flex flex-col gap-3">
@@ -289,11 +327,10 @@ const handleGerarImagemBase = async () => {
                     setCopiedPromptImagem(true);
                     setTimeout(() => setCopiedPromptImagem(false), 2000);
                   }}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-md border cursor-pointer transition-all ${
-                    copiedPromptImagem 
-                      ? 'bg-green-950 text-green-400 border-green-500' 
-                      : 'bg-[#1f2937] border-gray-700 text-emerald-400 hover:border-gray-600'
-                  }`}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-md border cursor-pointer transition-all ${copiedPromptImagem
+                    ? 'bg-green-950 text-green-400 border-green-500'
+                    : 'bg-[#1f2937] border-gray-700 text-emerald-400 hover:border-gray-600'
+                    }`}
                 >
                   {copiedPromptImagem ? 'Copiado!' : 'Copiar Comando'}
                 </button>

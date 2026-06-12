@@ -10,10 +10,10 @@ import { prisma } from './config/prisma';
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Configuração do Multer para ler o upload em memória temporária (máximo 5MB)
+// Configuração do Multer para ler o upload em memória temporária (máximo 25MB)
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 } // Limite de segurança de 5MB por foto
+  limits: { fileSize: 25 * 1024 * 1024 } 
 });
 
 app.use(cors());
@@ -25,28 +25,61 @@ const limitador = rateLimit({
   message: { error: "Muitas solicitações vindas deste IP. Tente novamente mais tarde." }
 });
 
-// Adicionamos o middleware 'upload.single("imagem")' nesta rota
+// ==========================================
+// 🤖 ENDPOINTS DE GERAÇÃO COM INTELIGÊNCIA ARTIFICIAL
+// ==========================================
 app.post('/api/gerar-prompts', limitador, upload.single('imagem'), gerarPrompts);
 app.post('/api/gerar-imagem-estatica', upload.single('imagem'), gerarImagemInfluencerEstatica);
 
-// Middleware para capturar erros de upload e não derrubar o servidor
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      res.status(400).json({ error: "A imagem é muito grande! O limite máximo permitido é de 25MB." });
-      return;
-    }
+
+// ==========================================
+// 🎥 ENDPOINTS DO HISTÓRICO DE VÍDEOS UGC (SUPABASE)
+// ==========================================
+
+// 🟢 1. BUSCAR TODO O HISTÓRICO (GET)
+app.get('/api/videos', async (req, res) => {
+  try {
+    const historico = await prisma.videoHistory.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(historico);
+  } catch (error) {
+    console.error('Erro ao buscar histórico no Supabase:', error);
+    res.status(500).json({ error: 'Erro interno ao carregar o histórico de vídeos.' });
   }
-  res.status(500).json({ error: "Ocorreu um erro interno no servidor." });
 });
 
-// Seu app.listen antigo continua aqui embaixo...
-app.listen(PORT, () => {
-  console.log(`🚀 Backend com suporte a Visão computacional rodando na porta ${PORT}`);
+// 🔵 2. SALVAR UM NOVO VÍDEO NO HISTÓRICO (POST)
+app.post('/api/videos', async (req, res) => {
+  try {
+    // O Frontend envia "resultados"
+    const { produto, avatarSelecionado, ambiente, tipoVideo, duracao, resultados } = req.body;
+
+    if (!produto || !resultados || resultados.length === 0) {
+      return res.status(400).json({ error: 'Produto e os resultados gerados são obrigatórios.' });
+    }
+
+    // Mapeamos os nomes para casar 100% com o seu schema do Prisma
+    const novoVideo = await prisma.videoHistory.create({
+      data: {
+        produto,
+        avatarDescricao: avatarSelecionado || 'fitness_woman',
+        ambiente,
+        tipoVideo,
+        duracao,
+        promptsGerados: resultados, // 🔥 Alterado de 'resultados' para 'promptsGerados' para bater com seu model!
+      },
+    });
+
+    res.status(201).json(novoVideo);
+  } catch (error) {
+    console.error('Erro ao salvar vídeo no histórico:', error);
+    res.status(500).json({ error: 'Erro interno ao salvar no histórico.' });
+  }
 });
 
 // ==========================================
-// 📚 ENDPOINTS DA BIBLIOTECA DE PROMPTS (POSTGRESQL)
+// 📚 ENDPOINTS DA BIBLIOTECA DE PROMPTS (SUPABASE)
 // ==========================================
 
 // 🟢 LISTAR TODOS OS PROMPTS (GET)
@@ -96,4 +129,25 @@ app.delete('/api/prompts/:id', async (req, res) => {
     console.error('Erro ao deletar prompt no Supabase:', error);
     res.status(500).json({ error: 'Erro interno ao remover o prompt.' });
   }
+});
+
+
+// ==========================================
+// 🛡️ MIDDLEWARES DE ERRO E INICIALIZAÇÃO (SEMPRE NO FINAL)
+// ==========================================
+
+// Middleware para capturar erros de upload e não derrubar o servidor
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ error: "A imagem é muito grande! O limite máximo permitido é de 25MB." });
+      return;
+    }
+  }
+  res.status(500).json({ error: "Ocorreu um erro interno no servidor." });
+});
+
+// Inicialização do servidor de fato
+app.listen(PORT, () => {
+  console.log(`🚀 Backend com suporte a Visão computacional rodando na porta ${PORT}`);
 });
