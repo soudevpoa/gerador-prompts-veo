@@ -269,9 +269,14 @@ export default function UgcGenerator() {
           <div className="grid grid-cols-2 gap-2 border-t border-gray-800 pt-4">
             <div>
               <label className="block text-[11px] font-medium mb-1 text-gray-400">4. Duração</label>
-              <select value={duracao} onChange={(e) => setDuracao(e.target.value)} className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-2 text-xs text-white">
-                <option value="Curto">Curto (2 Cenas)</option>
-                <option value="Médio">Médio (4 Cenas)</option>
+              <select
+                value={duracao}
+                onChange={(e) => setDuracao(e.target.value)}
+                className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-2 text-xs text-white"
+              >
+                <option value="Curto">Curto (2 Cenas - 15s)</option>
+                <option value="Médio">Médio (4 Cenas - 30s)</option>
+                <option value="Longo">Longo (6 Cenas - 60s)</option> {/* 🔥 NOVA OPÇÃO MATADORA! */}
               </select>
             </div>
             <div>
