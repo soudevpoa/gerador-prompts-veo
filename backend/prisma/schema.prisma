@@ -30,3 +30,9 @@ model VideoHistory {
 
   @@map("video_histories")
 }
+
+model Niche {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
