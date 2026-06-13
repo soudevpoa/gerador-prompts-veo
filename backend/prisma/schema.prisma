@@ -20,6 +20,7 @@ model Prompt {
 // 🎬 MODELO DO HISTÓRICO DE GERAÇÕES UGC
 model VideoHistory {
   id              String   @id @default(uuid())
+  userId          String
   produto         String
   avatarDescricao String   @db.Text
   ambiente        String
@@ -35,4 +36,33 @@ model Niche {
   id        String   @id @default(uuid())
   name      String   @unique
   createdAt DateTime @default(now())
+}
+
+model User {
+  id        String      @id // Esse ID vem direto do UUID do Auth do Supabase
+  email     String      @unique
+  name      String?
+  credits   Int         @default(10) // Já damos 10 créditos grátis de largada!
+  createdAt DateTime    @default(now())
+  
+  // 🔥 Relacionamentos Ativos!
+  config    UserConfig?
+
+  @@map("users")
+}
+
+// ⚙️ MODELO DE CONFIGURAÇÕES PRIVADAS DO USUÁRIO
+model UserConfig {
+  id         String   @id @default(uuid())
+  openaiKey  String?  
+  elevenKey  String?  
+  brandVoice String?  @db.Text // Campo de texto longo para o contexto da marca
+  
+  // 🔒 Amarração de segurança Relacional (1 para 1)
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  updatedAt  DateTime @updatedAt
+
+  @@map("user_configs")
 }

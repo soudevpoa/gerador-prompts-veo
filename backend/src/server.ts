@@ -3,9 +3,12 @@ import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
-import { createClient } from '@supabase/supabase-js'; //  Substitua por essa oficial!
-import { gerarPrompts } from './config/controllers/promptController';
-import { gerarImagemInfluencerEstatica } from './config/controllers/promptController';
+import { createClient } from '@supabase/supabase-js';
+import {
+  gerarPrompts,
+  gerarImagemInfluencerEstatica,
+  deletarPromptHistorico
+} from './config/controllers/promptController'; // 🔥 Import atualizado com o método DELETE
 import { prisma } from './config/prisma';
 
 const app = express();
@@ -18,21 +21,17 @@ const upload = multer({
 });
 
 // 🔥 REFACTOR DA VALIDAÇÃO DO SUPABASE NO SERVER.TS
-
-// 1. Tenta pegar a URL de qualquer variação comum
 const supabaseUrl =
   process.env.SUPABASE_URL ||
   process.env.NEXT_PUBLIC_SUPABASE_URL ||
   process.env.VITE_SUPABASE_URL;
 
-// 2. Tenta pegar a chave de qualquer variação comum
 const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
   process.env.SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.VITE_SUPABASE_ANON_KEY;
 
-// 3. Validação amigável para te dizer exatamente o que está salvo no seu .env
 if (!supabaseUrl || !supabaseKey) {
   console.log("⚠️ [Aviso .env] Nomes exatos não detectados. Verifique seu arquivo .env na raiz do backend.");
   console.log("👉 Chaves atualmente lidas pelo Node:", Object.keys(process.env).filter(k => k.includes('SUPABASE')));
@@ -44,6 +43,7 @@ const supabaseStorage = createClient(
   supabaseUrl || 'https://placeholder-url.supabase.co',
   supabaseKey || 'placeholder-key'
 );
+
 app.use(cors());
 app.use(express.json());
 
@@ -54,18 +54,48 @@ const limitador = rateLimit({
 });
 
 // ==========================================
-// 🤖 ENDPOINTS DE GERAÇÃO COM INTELIGÊNCIA ARTIFICIAL
+// 🔐 MIDDLEWARE DE AUTENTICAÇÃO
 // ==========================================
-app.post('/api/gerar-prompts', limitador, upload.single('imagem'), gerarPrompts);
-app.post('/api/gerar-imagem-estatica', upload.single('imagem'), gerarImagemInfluencerEstatica);
+async function verificarAutenticacao(req: express.Request, res: express.Response, next: express.NextFunction) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Acesso negado. Token não fornecido.' });
+    }
 
+    const token = authHeader.split(' ')[1];
+
+    // Chama o Supabase para validar se o token enviado pelo front é real e está ativo
+    const { data: { user }, error } = await supabaseStorage.auth.getUser(token);
+
+    if (error || !user) {
+      return res.status(401).json({ error: 'Token inválido ou expirado.' });
+    }
+
+    // Injeta o ID do usuário dentro da requisição para as próximas rotas usarem!
+    (req as any).userId = user.id;
+    next();
+  } catch (err) {
+    return res.status(401).json({ error: 'Falha na autenticação.' });
+  }
+}
 
 // ==========================================
-// 🎥 ENDPOINTS DO HISTÓRICO DE VÍDEOS UGC (SUPABASE)
+// 🤖 ENDPOINTS DE GERAÇÃO COM INTELIGÊNCIA ARTIFICIAL (PROTEGIDOS!)
+// ==========================================
+app.post('/api/gerar-prompts', verificarAutenticacao, limitador, upload.single('imagem'), gerarPrompts);
+app.post('/api/gerar-imagem-estatica', verificarAutenticacao, upload.single('imagem'), gerarImagemInfluencerEstatica);
+
+// ==========================================
+// 🎥 ENDPOINTS DO HISTÓRICO DE VÍDEOS UGC (SUPABASE - TOTALMENTE PROTEGIDOS)
 // ==========================================
 
-// 🟢 1. BUSCAR TODO O HISTÓRICO (GET)
-app.get('/api/videos', async (req, res) => {
+// 🔥 Atualizado: Agora busca apenas os vídeos gerados especificamente pelo usuário logado
+// ==========================================
+// 🎥 ENDPOINTS DO HISTÓRICO DE VÍDEOS UGC (SUPABASE - VERSÃO CORRIGIDA)
+// ==========================================
+
+app.get('/api/videos', verificarAutenticacao, async (req: any, res) => {
   try {
     const historico = await prisma.videoHistory.findMany({
       orderBy: { createdAt: 'desc' },
@@ -77,25 +107,24 @@ app.get('/api/videos', async (req, res) => {
   }
 });
 
-// 🔵 2. SALVAR UM NOVO VÍDEO NO HISTÓRICO (POST)
-app.post('/api/videos', async (req, res) => {
+app.post('/api/videos', verificarAutenticacao, async (req: any, res) => {
   try {
-    // O Frontend envia "resultados"
+    const userId = req.userId; // 🔥 Recupera o ID do usuário injetado pelo middleware
     const { produto, avatarSelecionado, ambiente, tipoVideo, duracao, resultados } = req.body;
 
     if (!produto || !resultados || resultados.length === 0) {
       return res.status(400).json({ error: 'Produto e os resultados gerados são obrigatórios.' });
     }
 
-    // Mapeamos os nomes para casar 100% com o seu schema do Prisma
     const novoVideo = await prisma.videoHistory.create({
       data: {
+        userId, // 🔒 Alimenta o campo obrigatório do seu schema do Prisma!
         produto,
         avatarDescricao: avatarSelecionado || 'fitness_woman',
         ambiente,
         tipoVideo,
         duracao,
-        promptsGerados: resultados, // 🔥 Alterado de 'resultados' para 'promptsGerados' para bater com seu model!
+        promptsGerados: resultados,
       },
     });
 
@@ -105,12 +134,11 @@ app.post('/api/videos', async (req, res) => {
     res.status(500).json({ error: 'Erro interno ao salvar no histórico.' });
   }
 });
-
+// Endpoint de deleção
+app.delete('/api/videos/:id', verificarAutenticacao, deletarPromptHistorico);
 // ==========================================
 // 📚 ENDPOINTS DA BIBLIOTECA DE PROMPTS (SUPABASE)
 // ==========================================
-
-// 🟢 LISTAR TODOS OS PROMPTS (GET)
 app.get('/api/prompts', async (req, res) => {
   try {
     const prompts = await prisma.prompt.findMany({
@@ -123,29 +151,24 @@ app.get('/api/prompts', async (req, res) => {
   }
 });
 
-// 🔵 2. CRIAR UM NOVO PROMPT COM UPLOAD DE IMAGEM (POST - NOVA ROTA!)
-app.post('/api/prompts-com-imagem', upload.single('imagemPreview'), async (req, res) => {
+app.post('/api/prompts-com-imagem', upload.single('imagemPreview'), async (req: any, res) => {
   try {
-    // 1. Captura os dados textuais do corpo da requisição (vem como string do FormData)
     const { titulo, tipo, fragmento } = req.body;
-    const file = req.file; // Captura o arquivo físico lido pelo Multer
+    const file = req.file;
 
     if (!titulo || !tipo || !fragmento) {
-      return res.status(400).json({ error: 'Título, Nicho e Estrutura de Prompts são obrigatórios.' });
+      return res.status(400).json({ error: 'Título, Nicho e Estrutura de Prompts are required.' });
     }
 
     let urlImagemFinal = null;
 
-    // 2. LÓGICA DE UPLOAD PARA O SUPABASE STORAGE
     if (file) {
       try {
         console.log("🚀 Iniciando upload de imagem física para o Supabase Storage...");
-        // Define um nome único para o arquivo (uuid + nome original) para evitar substituições malucas
         const nomeArquivoUnico = `${Date.now()}-${file.originalname}`;
 
-        // Faz o upload para o Bucket 'prompt-previews' (Crie este bucket no Supabase!)
         const { data: uploadData, error: uploadError } = await supabaseStorage
-          .storage // 🔥 Adicionado o ponto de entrada do Storage oficial!
+          .storage
           .from('prompt-previews')
           .upload(nomeArquivoUnico, file.buffer, {
             contentType: file.mimetype,
@@ -155,9 +178,8 @@ app.post('/api/prompts-com-imagem', upload.single('imagemPreview'), async (req, 
 
         if (uploadError) throw uploadError;
 
-        // Gera a URL pública do arquivo que acabamos de salvar na nuvem
         const { data: publicUrlData } = supabaseStorage
-          .storage // 🔥 Adicionado aqui também!
+          .storage
           .from('prompt-previews')
           .getPublicUrl(nomeArquivoUnico);
 
@@ -166,24 +188,21 @@ app.post('/api/prompts-com-imagem', upload.single('imagemPreview'), async (req, 
 
       } catch (storageError) {
         console.error('❌ Erro no upload para o Supabase Storage:', storageError);
-        // Opcional: Se der erro no storage, você pode decidir se para tudo ou salva sem imagem. 
-        // Vamos parar para garantir a integridade visual.
         return res.status(500).json({ error: 'Não foi possível salvar a imagem física na nuvem.' });
       }
     }
 
-    // 3. SALVAR NO BANCO DE DADOS (POSTGRESQL VIA PRISMA)
     console.log("💾 Salvando metadados e URL no banco de dados Prisma...");
-
-    // 解析 ou reconstrói o objeto para incluir a URL da imagem real dentro dele
     const estruturaObjeto = JSON.parse(fragmento);
-    estruturaObjeto.imagemRealUrl = urlImagemFinal; // Injeta a URL pública do Supabase Storage aqui dentro!
+    
+    // 🔥 CORRIGIDO: Agora usa o nome correto da variável em português!
+    estruturaObjeto.imagemRealUrl = urlImagemFinal; 
 
     const novoPrompt = await prisma.prompt.create({
       data: {
         titulo,
         tipo,
-        fragmento: JSON.stringify(estruturaObjeto), // 🔥 Salva o JSON completo atualizado!
+        fragmento: JSON.stringify(estruturaObjeto),
       },
     });
 
@@ -194,13 +213,12 @@ app.post('/api/prompts-com-imagem', upload.single('imagemPreview'), async (req, 
   }
 });
 
-// 🔵 CRIAR UM NOVO PROMPT (POST)
 app.post('/api/prompts', async (req, res) => {
   try {
     const { titulo, tipo, fragmento } = req.body;
 
     if (!titulo || !tipo || !fragmento) {
-      return res.status(400).json({ error: 'Todos os campos (titulo, tipo, fragmento) são obrigatórios.' });
+      return res.status(400).json({ error: 'Todos os campos são obrigatórios.' });
     }
 
     const novoPrompt = await prisma.prompt.create({
@@ -214,7 +232,6 @@ app.post('/api/prompts', async (req, res) => {
   }
 });
 
-// 🔴 REMOVER UM PROMPT (DELETE)
 app.delete('/api/prompts/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -230,32 +247,9 @@ app.delete('/api/prompts/:id', async (req, res) => {
   }
 });
 
-
-// ==========================================
-// 🛡️ MIDDLEWARES DE ERRO E INICIALIZAÇÃO (SEMPRE NO FINAL)
-// ==========================================
-
-// Middleware para capturar erros de upload e não derrubar o servidor
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  if (err instanceof multer.MulterError) {
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      res.status(400).json({ error: "A imagem é muito grande! O limite máximo permitido é de 25MB." });
-      return;
-    }
-  }
-  res.status(500).json({ error: "Ocorreu um erro interno no servidor." });
-});
-
-// Inicialização do servidor de fato
-app.listen(PORT, () => {
-  console.log(`🚀 Backend com suporte a Visão computacional rodando na porta ${PORT}`);
-});
-
 // ==========================================
 // 🏷️ ENDPOINTS DE NICHOS/CATEGORIAS DINÂMICAS
 // ==========================================
-
-// 🟢 LISTAR TODOS OS NICHOS (GET)
 app.get('/api/niches', async (req, res) => {
   try {
     const niches = await prisma.niche.findMany({
@@ -268,8 +262,6 @@ app.get('/api/niches', async (req, res) => {
   }
 });
 
-
-// 🔵 CADASTRAR UM NOVO NICHO (POST) - CORRIGIDO
 app.post('/api/niches', async (req, res) => {
   try {
     const { name } = req.body;
@@ -278,7 +270,6 @@ app.post('/api/niches', async (req, res) => {
       return res.status(400).json({ error: 'O nome do nicho é obrigatório.' });
     }
 
-    // 🔥 Corrigido: Nome junto sem espaço para o TypeScript não reclamar!
     const nomeFormatado = name.trim().charAt(0).toUpperCase() + name.trim().slice(1);
 
     const novoNicho = await prisma.niche.create({
@@ -293,4 +284,95 @@ app.post('/api/niches', async (req, res) => {
     }
     res.status(500).json({ error: 'Erro interno ao salvar novo nicho.' });
   }
+});
+
+// ==========================================
+// 🔐 ENDPOINTS DE AUTENTICAÇÃO E USUÁRIO
+// ==========================================
+app.post('/api/auth/sync', async (req, res) => {
+  try {
+    const { id, email, name } = req.body;
+
+    if (!id || !email) {
+      return res.status(400).json({ error: 'ID e Email são obrigatórios para sincronização.' });
+    }
+
+    const usuario = await prisma.user.upsert({
+      where: { id },
+      update: { name },
+      create: {
+        id,
+        email,
+        name,
+        credits: 10
+      }
+    });
+
+    res.json(usuario);
+  } catch (error) {
+    console.error('Erro ao sincronizar usuário:', error);
+    res.status(500).json({ error: 'Erro interno na sincronização do usuário.' });
+  }
+});
+
+// ==========================================
+// ⚙️ ENDPOINTS DE CONFIGURAÇÃO DO USUÁRIO
+// ==========================================
+app.get('/api/user/config', verificarAutenticacao, async (req: any, res) => {
+  try {
+    const userId = req.userId;
+
+    const config = await prisma.userConfig.findUnique({
+      where: { userId }
+    });
+
+    if (!config) {
+      return res.json({ openaiKey: '', elevenKey: '', brandVoice: '' });
+    }
+
+    res.json(config);
+  } catch (error) {
+    console.error('Erro ao buscar configurações:', error);
+    res.status(500).json({ error: 'Erro ao carregar configurações.' });
+  }
+});
+
+app.post('/api/user/config', verificarAutenticacao, async (req: any, res) => {
+  try {
+    const userId = req.userId;
+    const { openaiKey, elevenKey, brandVoice } = req.body;
+
+    const configAtualizada = await prisma.userConfig.upsert({
+      where: { userId },
+      update: { openaiKey, elevenKey, brandVoice },
+      create: {
+        userId,
+        openaiKey,
+        elevenKey,
+        brandVoice
+      }
+    });
+
+    res.json({ success: true, config: configAtualizada });
+  } catch (error) {
+    console.error('Erro ao salvar configurações:', error);
+    res.status(500).json({ error: 'Erro ao salvar configurações.' });
+  }
+});
+
+// ==========================================
+// 🛡️ MIDDLEWARES DE ERRO E INICIALIZAÇÃO (SEMPRE NO FINAL)
+// ==========================================
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      res.status(400).json({ error: "A imagem é muito grande! O limite máximo permitido é de 25MB." });
+      return;
+    }
+  }
+  res.status(500).json({ error: "Ocorreu um erro interno no servidor." });
+});
+
+app.listen(PORT, () => {
+  console.log(`🚀 Backend com suporte a Visão computacional rodando na porta ${PORT}`);
 });

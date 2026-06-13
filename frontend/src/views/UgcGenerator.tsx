@@ -71,6 +71,8 @@ export default function UgcGenerator() {
     setPromptTextoGerado(null);
 
     try {
+      const token = localStorage.getItem('@veocreator:token');
+
       const formData = new FormData();
       formData.append('produto', produto);
       formData.append('avatarDescricao', getAvatarDescricaoTexto());
@@ -79,11 +81,13 @@ export default function UgcGenerator() {
 
       const response = await fetch('http://localhost:3001/api/gerar-imagem-estatica', {
         method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
         body: formData,
       });
       const data = await response.json();
 
-      // Captura o prompt gerado pela inteligência do Gemini
       if (data.promptTextoPronto) {
         setPromptImagemGerado(data.promptTextoPronto);
         setPromptTextoGerado(data.promptTextoPronto);
@@ -98,11 +102,12 @@ export default function UgcGenerator() {
 
   // 🔥 PASSO 2 CORRIGIDO E SINCRONIZADO COM O SUPABASE
   const handleGerarRoteiro = async () => {
-    if (!produto) return alert('Por favor, preencha o nome do produto primeiro.');
+    if (!produto) return alert('Por favor, preencha o campo principal primeiro.');
 
     setLoading(true);
     try {
-      // 1. Criamos a variável formData que estava faltando para a API!
+      const token = localStorage.getItem('@veocreator:token');
+
       const formData = new FormData();
       formData.append('produto', produto);
       formData.append('avatarDescricao', getAvatarDescricaoTexto());
@@ -111,22 +116,22 @@ export default function UgcGenerator() {
       formData.append('duracao', duracao);
       if (imageFile) formData.append('imagem', imageFile);
 
-      // 2. Dispara a requisição oficial para a OpenAI no Backend
       const response = await fetch('http://localhost:3001/api/gerar-prompts', {
         method: 'POST',
-        body: formData // <-- Agora a variável existe e vai certinho!
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
       });
 
       if (!response.ok) throw new Error('Falha ao gerar roteiro na API');
       const data = await response.json();
 
-      // 3. Atualiza o estado da tela para exibir o roteiro na interface
       if (data.prompts && data.prompts.length > 0) {
         setResultados(data.prompts);
 
-        // 4. Criamos o objeto limpo para salvar no histórico do Supabase
         const dadosParaSalvar = {
-          produto: produto || "Produto Sem Nome",
+          produto: produto || "Sem Nome",
           avatarSelecionado: avatarSelecionado || "fitness_woman",
           ambiente: ambiente || "Casual background",
           tipoVideo: tipoVideo || "UGC",
@@ -136,11 +141,13 @@ export default function UgcGenerator() {
 
         console.log("📦 Enviando dados para o histórico:", dadosParaSalvar);
 
-        // 5. Faz o disparo de persistência na nuvem
         try {
           const saveResponse = await fetch('http://localhost:3001/api/videos', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify(dadosParaSalvar)
           });
 
@@ -148,7 +155,7 @@ export default function UgcGenerator() {
             const errorData = await saveResponse.json();
             console.error("❌ Erro retornado pelo servidor:", errorData);
           } else {
-            console.log("🎥 Roteiro salvo com sucesso no histórico do Supabase!");
+            console.log("🎥 Roteiro saved com sucesso no histórico do Supabase!");
           }
         } catch (err) {
           console.error("❌ Erro na conexão de salvamento:", err);
@@ -197,6 +204,7 @@ export default function UgcGenerator() {
             <label className="block text-sm font-medium mb-2 text-gray-300 flex items-center gap-2">
               <Image className="w-4 h-4 text-cyan-400" /> 1. Produto / Imagem Real de Fábrica
             </label>
+
             {!imagePreview ? (
               <label className="border-2 border-dashed border-gray-700 hover:border-cyan-500 rounded-lg p-4 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-[#1f2937]/30 mb-3">
                 <Upload className="w-5 h-5 text-gray-400" />
@@ -214,12 +222,13 @@ export default function UgcGenerator() {
                 </button>
               </div>
             )}
+
             <input
               type="text"
               placeholder="Nome exato do produto (ex: Calça Legging Flare Preta)"
               value={produto}
               onChange={(e) => setProduto(e.target.value)}
-              className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-3 text-sm focus:outline-none focus:border-cyan-500 transition-colors text-white"
+              className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-3 text-sm focus:outline-none focus:border-cyan-500 transition-colors text-white placeholder:text-gray-600"
             />
           </div>
 
@@ -272,19 +281,27 @@ export default function UgcGenerator() {
               <select
                 value={duracao}
                 onChange={(e) => setDuracao(e.target.value)}
-                className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-2 text-xs text-white"
+                className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-2 text-xs text-white cursor-pointer"
               >
                 <option value="Curto">Curto (2 Cenas - 15s)</option>
                 <option value="Médio">Médio (4 Cenas - 30s)</option>
-                <option value="Longo">Longo (6 Cenas - 60s)</option> {/* 🔥 NOVA OPÇÃO MATADORA! */}
+                <option value="Longo">Longo (6 Cenas - 60s)</option>
               </select>
             </div>
+
             <div>
               <label className="block text-[11px] font-medium mb-1 text-gray-400">5. Tipo de Vídeo</label>
-              <select value={tipoVideo} onChange={(e) => setTipoVideo(e.target.value)} className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-2 text-xs text-white">
-                <option value="UGC">UGC</option>
-                <option value="Testemunho">Testemunho</option>
-                <option value="Unboxing">Unboxing</option>
+              <select
+                value={tipoVideo}
+                onChange={(e) => setTipoVideo(e.target.value)}
+                className="w-full bg-[#1f2937] border border-gray-700 rounded-lg p-2 text-xs text-white cursor-pointer"
+              >
+                {/* 🛍️ Apenas Modelos de Conversão Comercial / UGC Puro */}
+                <option value="UGC">🎙️ UGC Tradicional</option>
+                <option value="Unboxing">📦 Unboxing Premium</option>
+                <option value="Review">📊 Avaliação (Review)</option>
+                <option value="Tutorial">💡 Tutorial Passo a Passo</option>
+                <option value="Testemunho">❤️ Testemunho Emocional</option>
               </select>
             </div>
           </div>
@@ -293,10 +310,10 @@ export default function UgcGenerator() {
           <button
             onClick={handleGerarImagemBase}
             disabled={loadingImagem || loading}
-            className="w-full bg-[#1f2937] hover:bg-[#2d3748] text-cyan-400 font-medium p-2.5 rounded-lg flex items-center justify-center gap-2 border border-cyan-500/30 cursor-pointer text-xs"
+            className="w-full bg-[#1f2937] hover:bg-[#2d3748] text-cyan-400 font-medium p-2.5 rounded-lg flex items-center justify-center gap-2 border border-cyan-500/30 cursor-pointer text-xs disabled:opacity-40"
           >
             {loadingImagem ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Trancando características do produto...</>
+              <><Loader2 className="w-4 h-4 animate-spin" /> Trancando características visuais...</>
             ) : (
               <><Image className="w-4 h-4" /> Passo 1: Criar Foto de Referência Fiel</>
             )}
@@ -306,7 +323,7 @@ export default function UgcGenerator() {
           <button
             onClick={handleGerarRoteiro}
             disabled={loading || loadingImagem}
-            className="w-full bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 text-white font-medium p-3 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer text-sm"
+            className="w-full bg-gradient-to-r from-cyan-500 to-purple-600 hover:from-cyan-600 hover:to-purple-700 text-white font-medium p-3 rounded-lg flex items-center justify-center gap-2 transition-all shadow-lg cursor-pointer text-sm disabled:opacity-40"
           >
             {loading ? (
               <><Loader2 className="w-5 h-5 animate-spin" /> Gerando Cenas Únicas...</>
@@ -321,7 +338,7 @@ export default function UgcGenerator() {
 
           {/* PAINEL DE CÓPIA DO PROMPT DA MODELO ESTÁTICA */}
           {promptImagemGerado && (
-            <div className="bg-[#111827] rounded-xl border border-emerald-500/30 p-5 shadow-xl flex flex-col gap-3">
+            <div className="bg-[#111827] rounded-xl border border-emerald-500/30 p-5 shadow-xl flex flex-col gap-3 animate-fadeIn">
               <div className="flex items-center justify-between border-b border-gray-800 pb-2">
                 <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-1.5">
                   <Check className="w-4 h-4" /> Prompt da Modelo Estática Criado!
@@ -341,7 +358,7 @@ export default function UgcGenerator() {
                 </button>
               </div>
               <p className="text-[11px] text-gray-400 leading-relaxed">
-                Este comando abaixo foi estruturado pelo Gemini usando IA de Visão para trancar a cor lisa e a textura do seu produto. Cole ele no gerador de imagens de sua preferência (Midjourney, Recraft ou ChatGPT) para criar a foto perfeita da modelo antes de ir pro VEO:
+                Este comando abaixo foi estruturado pelo Gemini usando IA de Visão para trancar a cor lisa e a textura do seu assunto. Cole ele no gerador de imagens de sua preferência (Midjourney, Recraft ou ChatGPT) para criar a foto perfeita antes de ir pro VEO:
               </p>
               <p className="bg-[#1f2937]/50 p-3 rounded-lg text-xs font-mono text-gray-300 border border-gray-800 break-words select-all">
                 {promptImagemGerado}
@@ -371,17 +388,47 @@ export default function UgcGenerator() {
                 </div>
 
                 {resultados.map((item, idx) => (
-                  <div key={idx} className="bg-[#111827] rounded-xl border border-gray-800 p-5 shadow-lg flex flex-col gap-4">
-                    <span className="text-xs font-bold text-cyan-400 uppercase">Cena {item.cena} ({item.tempo})</span>
+                  <div key={idx} className="bg-[#111827] rounded-xl border border-gray-800 p-5 shadow-lg flex flex-col gap-4 animate-fadeIn">
+
+                    {/* CABEÇALHO DA CENA */}
+                    <div className="flex justify-between items-center border-b border-gray-800/60 pb-2">
+                      <span className="text-xs font-bold text-cyan-400 uppercase">Cena {item.cena} ({item.tempo})</span>
+                    </div>
+
+                    {/* 🎬 1. PROMPT VISUAL (VEO / FX) */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs text-gray-400">Prompt Visual + Fala (Cole no VEO)</span>
-                        <button onClick={() => copyToClipboard(item.promptTexto, idx, 'prompt')} className="text-xs text-cyan-400 cursor-pointer">
-                          {copiedIndex?.id === idx && copiedIndex?.type === 'prompt' ? 'Copiado!' : 'Copiar'}
+                        <span className="text-[11px] text-gray-400 font-medium">Comando Visual (Cole no Gerador de Vídeo)</span>
+                        <button
+                          onClick={() => copyToClipboard(item.promptTexto, idx, 'prompt')}
+                          className="text-xs text-cyan-400 cursor-pointer hover:underline"
+                        >
+                          {copiedIndex?.id === idx && copiedIndex?.type === 'prompt' ? '✓ Copiado!' : 'Copiar Prompt'}
                         </button>
                       </div>
-                      <p className="bg-[#1f2937] p-3 rounded-lg text-xs font-mono text-gray-300 break-words border border-gray-800">{item.promptTexto}</p>
+                      <p className="bg-[#1f2937] p-3 rounded-lg text-xs font-mono text-gray-300 break-words border border-gray-800 leading-relaxed">
+                        {item.promptTexto}
+                      </p>
                     </div>
+
+                    {/* 🎙️ 2. TEXTO DA NARRAÇÃO / LOCUÇÃO (ELEVENLABS / VEO AUDIO) */}
+                    {item.locucaoTexto && (
+                      <div className="border-t border-gray-800/40 pt-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-[11px] text-purple-400 font-medium">Texto da Narração / Voz do Script (Português)</span>
+                          <button
+                            onClick={() => copyToClipboard(item.locucaoTexto, idx, 'locucao')}
+                            className="text-xs text-purple-400 cursor-pointer hover:underline"
+                          >
+                            {copiedIndex?.id === idx && copiedIndex?.type === 'locucao' ? '✓ Copiado!' : 'Copiar Áudio'}
+                          </button>
+                        </div>
+                        <p className="bg-[#1a1b26]/40 p-3 rounded-lg text-xs font-medium text-gray-200 border border-purple-950/30 leading-relaxed italic">
+                          "{item.locucaoTexto}"
+                        </p>
+                      </div>
+                    )}
+
                   </div>
                 ))}
               </>
