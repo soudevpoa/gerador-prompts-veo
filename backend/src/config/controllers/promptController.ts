@@ -6,6 +6,67 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export const remodelarConteudo = async (req: any, res: Response) => {
+  console.log("🔍 Arquivo recebido pelo controller:", req.file); // Se aparecer 'undefined', o multer falhou
+  
+  if (!req.file) {
+    return res.status(400).json({ error: "Nenhum arquivo enviado!" });
+  }
+  try {
+    const { transcricao, duracao, estilo } = req.body;
+    const file = req.file;
+
+    // 1. Passo: Obter descrição da imagem (Isolado)
+    const descricaoVisual = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: "Descreva esta imagem focando apenas em: iluminação, tipo de vestimenta, cenário, clima e estilo visual. Seja breve e técnico." },
+        { 
+          role: "user", 
+          content: [
+            { type: "text", text: "Descreva o estilo visual desta imagem." },
+            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${file.buffer.toString('base64')}` } }
+          ]
+        }
+      ]
+    });
+
+    const detalhesDaImagem = descricaoVisual.choices[0].message.content;
+
+    // 2. Passo: Gerar o roteiro (Apenas Texto - Inquebrável)
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.95,
+      messages: [
+        {
+      role: "system",
+      content: `Você é um Diretor Criativo renomado. 
+      REGRAS DE OURO PARA NÃO REPETIR TEXTOS:
+      1. ANALISE o estilo do texto enviado. Se for um anúncio, torne-o mais dinâmico. Se for uma história, torne-a mais profunda.
+      2. MUDE A ESTRUTURA: Nunca use a mesma ordem de abertura. Comece uma vez por uma pergunta, outra por uma curiosidade, outra por um comando direto.
+      3. VOCABULÁRIO: Use sinônimos fortes e evite palavras clichês de marketing.
+      4. ESTRUTURA DE SAÍDA: Responda APENAS com um JSON válido contendo: {"roteiro": [...], "promptVisual": "...", "locucaoTexto": "..."}.`
+    },
+    { 
+      role: "user", 
+      content: `Use estes detalhes visuais: ${detalhesDaImagem}. 
+      Aqui está a transcrição base: ${transcricao}. 
+      Duração: ${duracao}. Estilo: ${estilo}. 
+      DESAFIO: Crie uma versão totalmente nova e surpreendente, diferente de tudo que você já gerou antes!` 
+    }
+      ]
+    });
+
+    const resultado = JSON.parse(response.choices[0].message.content || "{}");
+    res.json(resultado);
+
+  } catch (error) {
+    console.error("Erro na remodelagem:", error);
+    res.status(500).json({ error: "Falha ao processar remodelagem." });
+  }
+};
 
 export const gerarPrompts = async (req: Request, res: Response): Promise<void> => {
   try {

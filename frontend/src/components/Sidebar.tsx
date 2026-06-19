@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom';
 // 🔥 Adicionado o Sparkles E o LogOut no import mestre
-import { Video, Sparkles, Bookmark, Clock, Settings, LogOut } from 'lucide-react';
+import { Video, Sparkles, Bookmark, Clock, Settings, LogOut, RefreshCw } from 'lucide-react';
 
 // 1. Atualizamos a interface para aceitar o usuário enviado pelo App.tsx
 interface SidebarProps {
@@ -17,6 +17,7 @@ export default function Sidebar({ onLogout, usuario }: SidebarProps) {
   { name: 'Biblioteca de Prompts', path: '/biblioteca', icon: Bookmark },
   { name: 'Histórico', path: '/historico', icon: Clock },
   { name: 'Configurações', path: '/configuracoes', icon: Settings },
+  { name: 'Remodelagem IA', path: '/remodelar', icon: RefreshCw },
 ];
 
   // Pega a primeira letra do nome do usuário para fazer o avatar dinâmico
@@ -55,6 +56,8 @@ export default function Sidebar({ onLogout, usuario }: SidebarProps) {
                 <Icone className={`w-4 h-4 ${isActive ? 'text-cyan-400' : 'text-gray-400'}`} />
                 {menu.name}
               </Link>
+              
+              
             );
           })}
         </nav>

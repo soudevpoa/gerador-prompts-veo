@@ -8,6 +8,8 @@ import { Login } from './views/Login';
 import SettingsView from './views/SettingsView';
 import { supabase } from './config/supabase';
 import DarkGenerator from './views/DarkGenerator';
+import RemodelagemPage from './pages/RemodelagemPage';
+
 
 export default function App() {
   const [token, setToken] = useState<string | null>(null);
@@ -42,6 +44,8 @@ export default function App() {
 
     checarSessao(); // ✅ Chamada idêntica e corrigida!
   }, []);
+
+
 
   // 🔑 2. Função disparada ao logar com sucesso
   const handleLoginSuccess = async (novoToken: string) => {
@@ -99,6 +103,8 @@ export default function App() {
             <Route path="/gerador-dark" element={<DarkGenerator />} />
             {/* Rota Raiz leva para o Gerador UGC que já tínhamos montado */}
             <Route path="/" element={<UgcGenerator />} />
+            {/* 🔥 A rota específica tem que vir antes da rota padrão (home) */}
+            <Route path="/remodelar" element={<RemodelagemPage />} />
 
             {/* Nova Rota para a Biblioteca de Prompts */}
             <Route path="/biblioteca" element={<PromptLibrary />} />
