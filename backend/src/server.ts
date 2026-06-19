@@ -67,10 +67,7 @@ async function verificarAutenticacao(req: express.Request, res: express.Response
 // ==========================================
 app.post('/api/gerar-prompts', verificarAutenticacao, limitador, upload.single('imagem'), gerarPrompts);
 app.post('/api/gerar-imagem-estatica', verificarAutenticacao, upload.single('imagem'), gerarImagemInfluencerEstatica);
-
-// 🔥 ROTA CORRIGIDA: Agora alinhada com o front-end (/api/remodelar-conteudo)
-// Certifique-se de que o front-end envia o campo como 'file'
-app.post('/api/remodelar-conteudo', verificarAutenticacao, limitador, upload.single('file'), remodelarConteudo);
+app.post('/api/remodelar-conteudo', verificarAutenticacao, remodelarConteudo);
 
 // ==========================================
 // 🎥 ENDPOINTS DO HISTÓRICO E BIBLIOTECA

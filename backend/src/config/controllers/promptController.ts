@@ -8,79 +8,69 @@ const prisma = new PrismaClient();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export const remodelarConteudo = async (req: any, res: Response) => {
-  console.log("🔍 Arquivo recebido pelo controller:", req.file);
-
-  if (!req.file) {
-    return res.status(400).json({ error: "Nenhum arquivo enviado!" });
-  }
-
+export const remodelarConteudo = async (req: Request, res: Response) => {
   try {
-    const { transcricao } = req.body;
-    const file = req.file;
+    const { transcricao, duracao, tipoVideo } = req.body;
 
-    // 1. Passo: Obter descrição da imagem
-    const descricaoVisual = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: "Descreva esta imagem focando apenas em: iluminação, tipo de vestimenta, cenário, clima e estilo visual. Seja breve e técnico." },
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Descreva o estilo visual desta imagem." },
-            { type: "image_url", image_url: { url: `data:${file.mimetype};base64,${file.buffer.toString('base64')}` } }
-          ]
-        }
-      ]
-    });
+    if (!transcricao) {
+      return res.status(400).json({ error: "Por favor, forneça a transcrição para remodelagem." });
+    }
 
-    const detalhesDaImagem = descricaoVisual.choices[0].message.content;
-
-    // 2. Passo: Gerar o roteiro (Forçando JSON puro)
+    // Geração focada puramente em texto estruturado
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      // 🔥 Aumentamos para 0.9 para dar mais criatividade e evitar repetição
-      temperature: 0.9,
+      temperature: 0.85,
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: `Você é um Diretor de Locução Profissional. 
-      REGRAS: Nunca repita roteiros anteriores. Use a transcrição fornecida como BASE, mas reescreva com um ângulo totalmente novo, tom de voz diferente e estrutura única. 
-      RETORNE APENAS JSON.`
+          content: `Você é um Diretor de Locução e Copywriter Profissional especialista em retenção de vídeos virais para Reels e TikTok.
+          Sua tarefa é receber uma transcrição e reescrevê-la com um ângulo totalmente novo, dinâmico e focado em alta conversão.
+          
+          REGRAS CRUTIAIS:
+          1. O usuário utilizará uma foto própria estática como imagem base diretamente no gerador de vídeo. Portanto, NÃO gaste palavras descrevendo roupas, cenários ou iluminação.
+          2. No campo 'promptTexto', escreva apenas um breve direcionamento conceitual ou ação em inglês alinhada ao texto daquela cena.
+          3. No campo 'locucaoTexto', gere os blocos de falas limpas e magnéticas em português, perfeitas para serem copiadas e coladas diretamente na voz do Veo.
+          
+          Retorne estritamente o seguinte formato JSON:
+          {
+            "prompts": [
+              { "cena": 1, "tempo": "0-3s", "promptTexto": "Short english prompt action guidance", "locucaoTexto": "Texto da fala adaptada da cena aqui" }
+            ],
+            "legendaCompleta": "Texto de legenda com hashtags estratégicas para a postagem"
+          }`
         },
         {
           role: "user",
           content: `INPUT DATA:
-      - Transcrição: ${transcricao}
-      - Detalhes visuais da imagem: ${detalhesDaImagem}
-      - Tarefa: Reescreva um roteiro viral e original baseado nesses dados.`
+          - Transcrição original: "${transcricao}"
+          - Duração estimada: ${duracao || '15s'}
+          - Estilo de vídeo focado: ${tipoVideo || 'Geral'}
+          
+          Tarefa: Forneça o novo roteiro focado em texto e na sequência de falas limpas para cópia.`
         }
       ]
     });
 
-    // 3. Passo: Parse seguro com limpeza de lixo
     const rawContent = response.choices[0].message.content || "{}";
     const cleanContent = rawContent.replace(/```json/g, '').replace(/```/g, '');
-
     const resultado = JSON.parse(cleanContent);
 
     res.json(resultado);
 
   } catch (error) {
-    console.error("Erro na remodelagem:", error);
-    res.status(500).json({ error: "Falha ao processar remodelagem. Verifique o log do servidor." });
+    console.error("Erro na remodelagem simplificada:", error);
+    res.status(500).json({ error: "Falha ao processar a remodelagem do roteiro." });
   }
 };
 export const gerarPrompts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { produto, avatarDescricao, ambiente, tipoVideo, duracao } = req.body;
     const file = req.file;
-
     const userId = (req as any).userId;
 
     if (!produto || !tipoVideo || !duracao) {
-      res.status(400).json({ error: "Campos essenciais (produto, tipoVideo, duracao) estão faltando." });
+      res.status(400).json({ error: "Campos essenciais faltando." });
       return;
     }
 
@@ -165,8 +155,8 @@ export const gerarPrompts = async (req: Request, res: Response): Promise<void> =
     if (ehFaceless) {
       if (ehReceita) {
         diretrizTipoVideo = `MODO RECEITAS SENSORIAIS (FOOD PORN): O usuário NÃO quer avatares ou pessoas na tela. Cada cena deve descrever planos macro cinemáticos, close-ups extremos e tomadas em primeira pessoa do preparo da comida (overhead table shots, close-up on hands mixing ingredients, steam rising from a pan, liquid syrup pouring smoothly). O foco deve estar totalmente na beleza dos ingredientes vivos, texturas apetitosas e ações reais da receita sobre o tema: "${produto}". PROIBIDO usar termos ou comandos relacionados a rostos ou movimentos labiais.
-        
-        🔥 REGRA DO CTA DA ÚLTIMA CENA: Obrigatoriamente, a última cena do roteiro (seja a cena 2, 4 ou 6 dependendo da duração) DEVE finalizar o vídeo mostrando o prato pronto maravilhoso sendo servido ou cortado, e a narração em português DEVE conter um CTA seco e direto chamando o espectador para ler a receita completa e os ingredientes que estão na legenda do post, incentivando ele a salvar o vídeo.`;
+          
+          🔥 REGRA DO CTA DA ÚLTIMA CENA: Obrigatoriamente, a última cena do roteiro (seja a cena 2, 4 ou 6 dependendo da duração) DEVE finalizar o vídeo mostrando o prato pronto maravilhoso sendo servido ou cortado, e a narração em português DEVE conter um CTA seco e direto chamando o espectador para ler a receita completa e os ingredientes que estão na legenda do post, incentivando ele a salvar o vídeo.`;
 
         BlackoutCameraOuAssinatura = "bright commercial food photography style, vibrant colors, clean marble tabletop background, studio soft lighting, mouth-watering food styling, ultra-detailed 8k resolution, smooth slow-motion cuts";
       } else if (ehPodcast) {
@@ -190,7 +180,7 @@ export const gerarPrompts = async (req: Request, res: Response): Promise<void> =
     // ⚡ INSTRUÇÃO DE AMBIENTE DINÂMICA
     const instrucaoAmbienteDinamica = ehFaceless
       ? ehReceita
-        ? `3. MODO RECEITAS: O cenário/fundo de todas as cenas deve ser obrigatoriamente um ambiente de cozinha moderna, estúdio culinário limho ou bancada de mármore iluminada e minimalista.`
+        ? `3. MODO RECEITAS: O cenário/fundo de todas as cenas deve ser obrigatoriamente um ambiente de cozinha moderna, estúdio culinário limpo ou bancada de mármore iluminada e minimalista.`
         : `3. MODO FACELESS: Ignore completamente a variável de ambiente fixada no frontend. O cenário/fundo de cada cena deve ser criado de forma dinâmica e adaptativa, focado estritamente em ilustrar com fidelidade o tema central da história: "${produto}".`
       : `3. MODO AVATAR HUMANO: O cenário de fundo de todas as cenas deve ser mantido baseado no ambiente selecionado na interface: "${ambiente || 'a natural background'}"`;
 
@@ -199,83 +189,59 @@ export const gerarPrompts = async (req: Request, res: Response): Promise<void> =
       ? `\n7. COMO O MODO ATUAL É RECEITAS: Você deve obrigatoriamente gerar uma receita culinária real e completa na propriedade final 'legendaCompleta' do JSON. Liste os ingredientes corretos em tópicos e o modo de preparo rápido de forma atraente usando emojis e hashtags virais para o usuário colocar na legenda do Reels/TikTok.`
       : `\n7. COMO O MODO É NARRATIVO/COMERCIAL: Escreva na propriedade final 'legendaCompleta' um texto curto e provocativo de alta conversão, acompanhado de hashtags estratégicas, feito para ser copiado e colado direto na legenda da postagem de vídeo.`;
 
+    // ⚡ Otimização do Call da API
+    const timestampAleatorio = new Date().getTime();
+    
+    const userPrompt = `
+        [SESSÃO DE IDENTIFICAÇÃO ÚNICA DA REQUISIÇÃO: ${timestampAleatorio}]
+        
+        LANGUAGE INSTRUCTION: Detect the language of the provided 'CONTEXTO BASE' and 'INSIGHTS VISUAIS'. 
+        You MUST generate the entire JSON response (prompts, locucaoTexto, legendaCompleta) in that SAME detected language.
+        
+        CONTEXTO BASE (PRODUTO OU TEMA): ${produto}
+        AVATAR BASE: ${ehFaceless ? "No Avatar / Pure Faceless Video" : avatarDescricao}
+        CENÁRIO/AMBIENTE REQUERIDO: ${ambiente || "Casual background"}
+        INSIGHTS VISUAIS DA IMAGEM REAL: ${insightsDaImagem || "Nenhuma imagem anexada."}
+        
+        ESTRUTURA CONCEITUAL DE RITMO (TRATADA E DINÂMICA):
+        Visões de referência: \n${fatiasVisuaisTratadas}
+        Falas de referência: \n${fatiasFaladasTratadas}
+      `;
+
     const systemPrompt = `
       You are a senior director and conversion copywriter for UGC, Reels, and Dark channel videos.
-      Your objective is to create a unique adaptive script of exactly ${limiteCenas} balanced scenes.
-      
-      CRITICAL LANGUAGE RULE: 
-      - Detect the language of the provided 'Transcrição base'.
-      - All content (locucaoTexto, legendaCompleta, and speech within promptTexto) MUST be in the EXACT SAME LANGUAGE as the 'Transcrição base'.
-      - Maintain the original language's cultural nuances and tone.
-
-      INSTRUCTIONS:
-      ${diretrizTipoVideo}
-
-      WRITING, MARKETING & VARIABILITY INSTRUCTIONS:
-      1. 🔥 NEVER REPEAT STRUCTURES: Ignore cliched hooks and create 100% ORIGINAL approaches every time.
-      2. Use rich, natural, and colloquial vocabulary appropriate for the detected language.
-      
-      VISUAL & AUDIO CONSISTENCY FOR VEO 3.1:
-      1. All scene descriptions, framing, and camera movements must be in ENGLISH.
-      ${instrucaoAmbienteDinamica}
-      4. 🔥 MANDATORY (SINGLE BLOCK WITH AUDIO): Mix the speech directly into 'promptTexto':
-         - If using an avatar: ... and says "[SPEECH IN ORIGINAL LANGUAGE]".
-         - If FACELESS: ... with voiceover narration saying "[SPEECH IN ORIGINAL LANGUAGE]".
-      5. The narration/speech must remain 100% in the ORIGINAL LANGUAGE of the input.
-      6. All physical descriptions or macro actions must be at the START of the 'promptTexto'.
-      7. Add this exact signature to the end of each promptTexto: ", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio, natural voice inflection, perfect lip-sync'}".${diretrizLegendaReceita}
-      
-      The output must be OBLIGATORILY a valid JSON, without markdowns or explanations.
-      ${contextoMarca}
-
-      EXAMPLE JSON OUTPUT:
+      Your task is to generate a JSON response strictly following this schema:
       {
-        "prompts": [
-          {
-            "cena": 1,
-            "tempo": "10s",
-            "promptTexto": "A professional cinematic shot matching active guidelines. Context: [ACTION]. With voiceover narration saying \\"[SPEECH IN ORIGINAL LANGUAGE]\\", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio, natural voice inflection, perfect lip-sync'}",
-            "locucaoTexto": "[SPEECH IN ORIGINAL LANGUAGE]"
-          }
-        ],
-        "legendaCompleta": "[FULL CAPTION TEXT INCLUDING RECIPE/CONTENT, INGREDIENTS, PREP STEPS, AND VIRAL HASHTAGS IN THE ORIGINAL LANGUAGE]"
+        "prompts": [{ "cena": number, "tempo": string, "promptTexto": string, "locucaoTexto": string }],
+        "legendaCompleta": string
       }
-    `;
 
-    const timestampAleatorio = new Date().getTime();
-    const userPrompt = `
-      [SESSÃO DE IDENTIFICAÇÃO ÚNICA DA REQUISIÇÃO: ${timestampAleatorio}]
-      
-      LANGUAGE INSTRUCTION: Detect the language of the provided 'CONTEXTO BASE' and 'INSIGHTS VISUAIS'. 
-      You MUST generate the entire JSON response (prompts, locucaoTexto, legendaCompleta) in that SAME detected language.
-      
-      CONTEXTO BASE (PRODUTO OU TEMA): ${produto}
-      AVATAR BASE: ${ehFaceless ? "No Avatar / Pure Faceless Video" : avatarDescricao}
-      CENÁRIO/AMBIENTE REQUERIDO: ${ambiente || "Casual background"}
-      INSIGHTS VISUAIS DA IMAGEM REAL: ${insightsDaImagem || "Nenhuma imagem anexada."}
-      
-      ESTRUTURA CONCEITUAL DE RITMO (TRATADA E DINÂMICA):
-      Visões de referência: \n${fatiasVisuaisTratadas}
-      Falas de referência: \n${fatiasFaladasTratadas}
+      CRITICAL RULES:
+      1. LANGUAGE: Detect the language of the 'Transcrição base' / 'Contexto'. Output EVERYTHING in that detected language.
+      2. CONSISTENCY: All 'promptTexto' fields must have English camera/visual descriptions. Narration/speech must match the detected language.
+      3. VARIABILITY: Do not reuse templates. Create high-conversion, original scripts.
+      4. VEO 3.1 COMPATIBILITY: Include the signature: ", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio, natural voice inflection, perfect lip-sync'}".
+      5. FORMAT: No markdown, no explanations, strictly valid JSON.
     `;
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
       response_format: { type: "json_object" },
-      temperature: 1.1,
-      presence_penalty: 0.8,
-      frequency_penalty: 0.6,
+      temperature: 0.7,
+      presence_penalty: 0.2,
+      frequency_penalty: 0.2,
     });
 
     const stringResult = response.choices[0].message.content || '{}';
     res.json(JSON.parse(stringResult));
+
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Erro interno ao processar roteiro adaptativo." });
+    console.error("Erro crítico no gerarPrompts:", error);
+    res.status(500).json({ error: "Erro interno ao processar o roteiro." });
   }
 };
 
@@ -348,21 +314,19 @@ export const gerarImagemInfluencerEstatica = async (req: Request, res: Response)
 export const deletarPromptHistorico = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const userId = (req as any).userId; // Injetado pelo middleware de autenticação
+    const userId = (req as any).userId;
 
     console.log(`🚀 Tentando deletar o prompt ID recebido (UUID String): "${id}" para o usuário: ${userId}`);
 
-    // 1. Validação de segurança simples: Garante que o ID não veio vazio
     if (!id || typeof id !== 'string') {
       console.error(`❌ ID inválido ou vazio recebido no backend: ${id}`);
       res.status(400).json({ error: "O ID fornecido é inválido." });
       return;
     }
 
-    // 2. Busca o registro usando o ID como String pura e o userId
     const registro = await prisma.videoHistory.findFirst({
       where: {
-        id: id, // 🔒 Corrigido: Passando a string pura sem converter para Number!
+        id: id,
         userId: userId
       }
     });
@@ -373,10 +337,9 @@ export const deletarPromptHistorico = async (req: Request, res: Response): Promi
       return;
     }
 
-    // 3. Executa a deleção de fato usando a string do ID
     await prisma.videoHistory.delete({
       where: {
-        id: id // 🔒 Corrigido: Usando a string pura
+        id: id
       }
     });
 
