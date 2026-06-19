@@ -9,25 +9,26 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export const remodelarConteudo = async (req: any, res: Response) => {
-  console.log("🔍 Arquivo recebido pelo controller:", req.file); // Se aparecer 'undefined', o multer falhou
-  
+  console.log("🔍 Arquivo recebido pelo controller:", req.file);
+
   if (!req.file) {
     return res.status(400).json({ error: "Nenhum arquivo enviado!" });
   }
+
   try {
-    const { transcricao, duracao, estilo } = req.body;
+    const { transcricao } = req.body;
     const file = req.file;
 
-    // 1. Passo: Obter descrição da imagem (Isolado)
+    // 1. Passo: Obter descrição da imagem
     const descricaoVisual = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
         { role: "system", content: "Descreva esta imagem focando apenas em: iluminação, tipo de vestimenta, cenário, clima e estilo visual. Seja breve e técnico." },
-        { 
-          role: "user", 
+        {
+          role: "user",
           content: [
             { type: "text", text: "Descreva o estilo visual desta imagem." },
-            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${file.buffer.toString('base64')}` } }
+            { type: "image_url", image_url: { url: `data:${file.mimetype};base64,${file.buffer.toString('base64')}` } }
           ]
         }
       ]
@@ -35,39 +36,42 @@ export const remodelarConteudo = async (req: any, res: Response) => {
 
     const detalhesDaImagem = descricaoVisual.choices[0].message.content;
 
-    // 2. Passo: Gerar o roteiro (Apenas Texto - Inquebrável)
+    // 2. Passo: Gerar o roteiro (Forçando JSON puro)
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
-      temperature: 0.95,
+      // 🔥 Aumentamos para 0.9 para dar mais criatividade e evitar repetição
+      temperature: 0.9,
+      response_format: { type: "json_object" },
       messages: [
         {
-      role: "system",
-      content: `Você é um Diretor Criativo renomado. 
-      REGRAS DE OURO PARA NÃO REPETIR TEXTOS:
-      1. ANALISE o estilo do texto enviado. Se for um anúncio, torne-o mais dinâmico. Se for uma história, torne-a mais profunda.
-      2. MUDE A ESTRUTURA: Nunca use a mesma ordem de abertura. Comece uma vez por uma pergunta, outra por uma curiosidade, outra por um comando direto.
-      3. VOCABULÁRIO: Use sinônimos fortes e evite palavras clichês de marketing.
-      4. ESTRUTURA DE SAÍDA: Responda APENAS com um JSON válido contendo: {"roteiro": [...], "promptVisual": "...", "locucaoTexto": "..."}.`
-    },
-    { 
-      role: "user", 
-      content: `Use estes detalhes visuais: ${detalhesDaImagem}. 
-      Aqui está a transcrição base: ${transcricao}. 
-      Duração: ${duracao}. Estilo: ${estilo}. 
-      DESAFIO: Crie uma versão totalmente nova e surpreendente, diferente de tudo que você já gerou antes!` 
-    }
+          role: "system",
+          content: `Você é um Diretor de Locução Profissional. 
+      REGRAS: Nunca repita roteiros anteriores. Use a transcrição fornecida como BASE, mas reescreva com um ângulo totalmente novo, tom de voz diferente e estrutura única. 
+      RETORNE APENAS JSON.`
+        },
+        {
+          role: "user",
+          content: `INPUT DATA:
+      - Transcrição: ${transcricao}
+      - Detalhes visuais da imagem: ${detalhesDaImagem}
+      - Tarefa: Reescreva um roteiro viral e original baseado nesses dados.`
+        }
       ]
     });
 
-    const resultado = JSON.parse(response.choices[0].message.content || "{}");
+    // 3. Passo: Parse seguro com limpeza de lixo
+    const rawContent = response.choices[0].message.content || "{}";
+    const cleanContent = rawContent.replace(/```json/g, '').replace(/```/g, '');
+
+    const resultado = JSON.parse(cleanContent);
+
     res.json(resultado);
 
   } catch (error) {
     console.error("Erro na remodelagem:", error);
-    res.status(500).json({ error: "Falha ao processar remodelagem." });
+    res.status(500).json({ error: "Falha ao processar remodelagem. Verifique o log do servidor." });
   }
 };
-
 export const gerarPrompts = async (req: Request, res: Response): Promise<void> => {
   try {
     const { produto, avatarDescricao, ambiente, tipoVideo, duracao } = req.body;
@@ -196,46 +200,55 @@ export const gerarPrompts = async (req: Request, res: Response): Promise<void> =
       : `\n7. COMO O MODO É NARRATIVO/COMERCIAL: Escreva na propriedade final 'legendaCompleta' um texto curto e provocativo de alta conversão, acompanhado de hashtags estratégicas, feito para ser copiado e colado direto na legenda da postagem de vídeo.`;
 
     const systemPrompt = `
-      Você é um diretor sênior e roteirista de alta conversão para vídeos UGC, Reels e canais Dark.
-      Seu objetivo é criar um roteiro adaptativo único de exatamente ${limiteCenas} cenas balanceadas.
+      You are a senior director and conversion copywriter for UGC, Reels, and Dark channel videos.
+      Your objective is to create a unique adaptive script of exactly ${limiteCenas} balanced scenes.
       
-      INSTRUÇÕES DE ESCRITA ADAPTATIVA E COMPORTAMENTO DE CENA:
+      CRITICAL LANGUAGE RULE: 
+      - Detect the language of the provided 'Transcrição base'.
+      - All content (locucaoTexto, legendaCompleta, and speech within promptTexto) MUST be in the EXACT SAME LANGUAGE as the 'Transcrição base'.
+      - Maintain the original language's cultural nuances and tone.
+
+      INSTRUCTIONS:
       ${diretrizTipoVideo}
 
-      INSTRUÇÕES DE REESCRITA, MARKETING E VARIABILIDADE EXTREMA:
-      1. 🔥 PROIBIDO REPETIR ESTRUTURAS: Ignore ganchos textuais manjados e crie abordagens 100% INÉDITOS a cada chamada.
-      2. Use vocabulário rico, natural e coloquial em português do Brasil.
+      WRITING, MARKETING & VARIABILITY INSTRUCTIONS:
+      1. 🔥 NEVER REPEAT STRUCTURES: Ignore cliched hooks and create 100% ORIGINAL approaches every time.
+      2. Use rich, natural, and colloquial vocabulary appropriate for the detected language.
       
-      INSTRUÇÕES DE CONSISTÊNCIA VISUAL E ÁUDIO UNIFICADO PARA O VEO 3.1:
-      1. Toda a descrição de cena, enquadramentos e movimentos de câmera devem ser em INGLÊS.
+      VISUAL & AUDIO CONSISTENCY FOR VEO 3.1:
+      1. All scene descriptions, framing, and camera movements must be in ENGLISH.
       ${instrucaoAmbienteDinamica}
-      4. 🔥 OBRIGATÓRIO (BLOCO ÚNICO COM ÁUDIO): Misture a fala diretamente dentro da string 'promptTexto':
-         - Se houver avatar: ... and says "\\"[TEXTO DA LOCUÇÃO EM PORTUGUÊS]\\"".
-         - Se for FACELESS: ... with voiceover narration saying "\\"[TEXTO DA LOCUÇÃO EM PORTUGUÊS]\\"".
-      5. A fala/narração deve permanecer 100% em PORTUGUÊS DO BRASIL.
-      6. Toda a descrição física do avatar ou ação macro deve vir no INÍCIO da string 'promptTexto'.
-      7. Adicione esta assinatura exata ao fim de cada promptTexto: ", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio in Brazilian Portuguese, natural Brazilian voice inflection, perfect lip-sync'}".${diretrizLegendaReceita}
+      4. 🔥 MANDATORY (SINGLE BLOCK WITH AUDIO): Mix the speech directly into 'promptTexto':
+         - If using an avatar: ... and says "[SPEECH IN ORIGINAL LANGUAGE]".
+         - If FACELESS: ... with voiceover narration saying "[SPEECH IN ORIGINAL LANGUAGE]".
+      5. The narration/speech must remain 100% in the ORIGINAL LANGUAGE of the input.
+      6. All physical descriptions or macro actions must be at the START of the 'promptTexto'.
+      7. Add this exact signature to the end of each promptTexto: ", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio, natural voice inflection, perfect lip-sync'}".${diretrizLegendaReceita}
       
-      O retorno deve ser OBRIGATORIAMENTE um JSON válido no formato do exemplo abaixo, sem markdowns ou explicações.
+      The output must be OBLIGATORILY a valid JSON, without markdowns or explanations.
       ${contextoMarca}
 
-      EXEMPLO DE RETORNO JSON CONFORME O MODO SELECIONADO:
+      EXAMPLE JSON OUTPUT:
       {
         "prompts": [
           {
             "cena": 1,
             "tempo": "10s",
-            "promptTexto": "A professional cinematic overhead table shot matching the active video guidelines. Context: [AÇÃO CULINÁRIA]. With voiceover narration saying \\"[SUA NARRACAO EM PORTUGUÊS]\\", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio in Brazilian Portuguese, natural Brazilian voice inflection, perfect lip-sync'}",
-            "locucaoTexto": "[SUA NARRACAO EM PORTUGUÊS]"
+            "promptTexto": "A professional cinematic shot matching active guidelines. Context: [ACTION]. With voiceover narration saying \\"[SPEECH IN ORIGINAL LANGUAGE]\\", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio, natural voice inflection, perfect lip-sync'}",
+            "locucaoTexto": "[SPEECH IN ORIGINAL LANGUAGE]"
           }
         ],
-        "legendaCompleta": "[TEXTO COMPLETO DA LEGENDA DO POST COM A RECEITA COMPLETA SE FOR O CASO, INGREDIENTES, MODO DE PREPARO E HASHTAGS COPIÁVEIS COM EMOJIS]"
+        "legendaCompleta": "[FULL CAPTION TEXT INCLUDING RECIPE/CONTENT, INGREDIENTS, PREP STEPS, AND VIRAL HASHTAGS IN THE ORIGINAL LANGUAGE]"
       }
     `;
 
     const timestampAleatorio = new Date().getTime();
     const userPrompt = `
       [SESSÃO DE IDENTIFICAÇÃO ÚNICA DA REQUISIÇÃO: ${timestampAleatorio}]
+      
+      LANGUAGE INSTRUCTION: Detect the language of the provided 'CONTEXTO BASE' and 'INSIGHTS VISUAIS'. 
+      You MUST generate the entire JSON response (prompts, locucaoTexto, legendaCompleta) in that SAME detected language.
+      
       CONTEXTO BASE (PRODUTO OU TEMA): ${produto}
       AVATAR BASE: ${ehFaceless ? "No Avatar / Pure Faceless Video" : avatarDescricao}
       CENÁRIO/AMBIENTE REQUERIDO: ${ambiente || "Casual background"}

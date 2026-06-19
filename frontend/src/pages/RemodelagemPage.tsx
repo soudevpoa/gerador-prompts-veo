@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import StoryboardView from '../views/StoryboardView';
 import UploadForm from '../components/UploadForm';
+// 🔥 Importação corrigida para o caminho correto do seu projeto
+import { supabase } from '../config/supabase';
 
 const RemodelagemPage = () => {
     const [resultado, setResultado] = useState<any>(null);
@@ -12,18 +14,9 @@ const RemodelagemPage = () => {
         setResultado(null);
 
         try {
-            // 1. Buscamos a sessão do Supabase de forma assíncrona
-            const { data } = await supabase.auth.getSession();
-            const token = data.session?.access_token;
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token;
 
-            // 2. Verificação de segurança: Se não tiver token, paramos aqui
-            if (!token) {
-                alert("Sua sessão expirou. Por favor, faça login novamente.");
-                setLoading(false);
-                return;
-            }
-
-            // 3. Chamada à API com o token na mão
             const res = await axios.post('http://localhost:3001/api/remodelar-conteudo', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -31,14 +24,20 @@ const RemodelagemPage = () => {
                 }
             });
 
+            // 🔥 LOG CRUCIAL: O que o front está a receber exatamente?
+            console.log("Resposta do Backend no Front-end:", res.data);
+
+            // Se o backend retorna { "prompts": [...], ... }
+            // Garantimos que o estado seja preenchido
             setResultado(res.data);
-        } catch (error: any) {
-            console.error("Erro na remodelagem:", error);
-            alert("Falha ao processar remodelagem. Verifique a conexão com o servidor.");
+
+        } catch (error) {
+            console.error("Erro:", error);
         } finally {
             setLoading(false);
         }
     };
+
     return (
         <div className="p-8 max-w-4xl mx-auto space-y-8 min-h-screen">
             <header>
@@ -48,7 +47,6 @@ const RemodelagemPage = () => {
 
             <UploadForm onUpload={handleRemodelar} />
 
-            {/* Spinner de Carregamento Estilizado */}
             {loading && (
                 <div className="flex flex-col justify-center items-center py-10">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-4 border-cyan-500"></div>
@@ -56,7 +54,6 @@ const RemodelagemPage = () => {
                 </div>
             )}
 
-            {/* Resultados do Storyboard */}
             {resultado && (
                 <section className="animate-in fade-in duration-700 mt-8">
                     <StoryboardView data={resultado} />
