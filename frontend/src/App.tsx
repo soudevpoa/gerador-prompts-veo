@@ -9,6 +9,7 @@ import SettingsView from './views/SettingsView';
 import { supabase } from './config/supabase';
 import DarkGenerator from './views/DarkGenerator';
 import RemodelagemPage from './pages/RemodelagemPage';
+import { YoutubeReviewGenerator } from './views/YoutubeReviewGenerator';
 
 
 export default function App() {
@@ -102,6 +103,7 @@ export default function App() {
             <Route path="/" element={<UgcGenerator />} />
             <Route path="/gerador-dark" element={<DarkGenerator />} />
             {/* Rota Raiz leva para o Gerador UGC que já tínhamos montado */}
+            <Route path="/youtube-review" element={<YoutubeReviewGenerator />} />
             <Route path="/" element={<UgcGenerator />} />
             {/* 🔥 A rota específica tem que vir antes da rota padrão (home) */}
             <Route path="/remodelar" element={<RemodelagemPage />} />

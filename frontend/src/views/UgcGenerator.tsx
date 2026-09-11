@@ -180,7 +180,11 @@ export default function UgcGenerator() {
 
   const copiarTodosOsPrompts = () => {
     if (resultados.length === 0) return;
-    const blocoCompleto = resultados.map(r => `Cena ${r.cena} (${r.tempo}):\n${r.promptTexto}`).join('\n\n');
+    const blocoCompleto = resultados.map(r => {
+      // Junta o prompt visual com a locução entre aspas (se existir)
+      const textoVeo = r.locucaoTexto ? `${r.promptTexto.trim()} "${r.locucaoTexto.trim()}"` : r.promptTexto;
+      return `Cena ${r.cena} (${r.tempo}):\n${textoVeo}`;
+    }).join('\n\n');
     navigator.clipboard.writeText(blocoCompleto);
     setCopiedAll(true);
     setTimeout(() => setCopiedAll(false), 2000);
@@ -387,50 +391,57 @@ export default function UgcGenerator() {
                   </button>
                 </div>
 
-                {resultados.map((item, idx) => (
-                  <div key={idx} className="bg-[#111827] rounded-xl border border-gray-800 p-5 shadow-lg flex flex-col gap-4 animate-fadeIn">
+               {resultados.map((item, idx) => {
+                  // Cria o comando completo pronto para o VEO
+                  const promptCombinado = item.locucaoTexto
+                    ? `${item.promptTexto.trim()} "${item.locucaoTexto.trim()}"`
+                    : item.promptTexto;
 
-                    {/* CABEÇALHO DA CENA */}
-                    <div className="flex justify-between items-center border-b border-gray-800/60 pb-2">
-                      <span className="text-xs font-bold text-cyan-400 uppercase">Cena {item.cena} ({item.tempo})</span>
-                    </div>
+                  return (
+                    <div key={idx} className="bg-[#111827] rounded-xl border border-gray-800 p-5 shadow-lg flex flex-col gap-4 animate-fadeIn">
 
-                    {/* 🎬 1. PROMPT VISUAL (VEO / FX) */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-[11px] text-gray-400 font-medium">Comando Visual (Cole no Gerador de Vídeo)</span>
-                        <button
-                          onClick={() => copyToClipboard(item.promptTexto, idx, 'prompt')}
-                          className="text-xs text-cyan-400 cursor-pointer hover:underline"
-                        >
-                          {copiedIndex?.id === idx && copiedIndex?.type === 'prompt' ? '✓ Copiado!' : 'Copiar Prompt'}
-                        </button>
+                      {/* CABEÇALHO DA CENA */}
+                      <div className="flex justify-between items-center border-b border-gray-800/60 pb-2">
+                        <span className="text-xs font-bold text-cyan-400 uppercase">Cena {item.cena} ({item.tempo})</span>
                       </div>
-                      <p className="bg-[#1f2937] p-3 rounded-lg text-xs font-mono text-gray-300 break-words border border-gray-800 leading-relaxed">
-                        {item.promptTexto}
-                      </p>
-                    </div>
 
-                    {/* 🎙️ 2. TEXTO DA NARRAÇÃO / LOCUÇÃO (ELEVENLABS / VEO AUDIO) */}
-                    {item.locucaoTexto && (
-                      <div className="border-t border-gray-800/40 pt-3">
+                      {/* 🎬 1. PROMPT VISUAL + ÁUDIO (VEO) */}
+                      <div>
                         <div className="flex justify-between items-center mb-1">
-                          <span className="text-[11px] text-purple-400 font-medium">Texto da Narração / Voz do Script (Português)</span>
+                          <span className="text-[11px] text-gray-400 font-medium">Comando Completo p/ VEO (Visual + Áudio)</span>
                           <button
-                            onClick={() => copyToClipboard(item.locucaoTexto, idx, 'locucao')}
-                            className="text-xs text-purple-400 cursor-pointer hover:underline"
+                            onClick={() => copyToClipboard(promptCombinado, idx, 'prompt')}
+                            className="text-xs text-cyan-400 cursor-pointer hover:underline"
                           >
-                            {copiedIndex?.id === idx && copiedIndex?.type === 'locucao' ? '✓ Copiado!' : 'Copiar Áudio'}
+                            {copiedIndex?.id === idx && copiedIndex?.type === 'prompt' ? '✓ Copiado!' : 'Copiar Comando Completo'}
                           </button>
                         </div>
-                        <p className="bg-[#1a1b26]/40 p-3 rounded-lg text-xs font-medium text-gray-200 border border-purple-950/30 leading-relaxed italic">
-                          "{item.locucaoTexto}"
+                        <p className="bg-[#1f2937] p-3 rounded-lg text-xs font-mono text-gray-300 break-words border border-gray-800 leading-relaxed">
+                          {promptCombinado}
                         </p>
                       </div>
-                    )}
 
-                  </div>
-                ))}
+                      {/* 🎙️ 2. TEXTO DA NARRAÇÃO SEPARADA (Opcional, caso queira usar em outro app de voz) */}
+                      {item.locucaoTexto && (
+                        <div className="border-t border-gray-800/40 pt-3">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[11px] text-purple-400 font-medium">Apenas Texto da Locução (Para ElevenLabs, etc)</span>
+                            <button
+                              onClick={() => copyToClipboard(item.locucaoTexto, idx, 'locucao')}
+                              className="text-xs text-purple-400 cursor-pointer hover:underline"
+                            >
+                              {copiedIndex?.id === idx && copiedIndex?.type === 'locucao' ? '✓ Copiado!' : 'Copiar Apenas Áudio'}
+                            </button>
+                          </div>
+                          <p className="bg-[#1a1b26]/40 p-3 rounded-lg text-xs font-medium text-gray-200 border border-purple-950/30 leading-relaxed italic">
+                            "{item.locucaoTexto}"
+                          </p>
+                        </div>
+                      )}
+
+                    </div>
+                  );
+                })}
               </>
             )}
           </div>

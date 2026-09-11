@@ -8,6 +8,61 @@ const prisma = new PrismaClient();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+
+export const generateYoutubeReview = async (req: Request, res: Response) => {
+  try {
+    const { productName, targetPain, mainBenefit, usageTime, avatarProfile, homeSetting, antiScamAlert, ctaLocation } = req.body;
+
+    const baseVeoPrompt = `16:9 widescreen format, 4K resolution, authentic UGC video aesthetic shot on smartphone front camera. Subject: ${avatarProfile}, wearing casual home clothes, natural facial expressions. Setting: ${homeSetting}. Handheld camera movement with subtle natural shake, warm interior lighting.`;
+
+    const rawBlocks = [
+      {
+        title: "Hook & Quebra de Padrão",
+        timestamp: "0:00 - 1:00",
+        script: `Se você está pensando em comprar o ${productName} para tratar ${targetPain}, para tudo o que você está fazendo e assiste esse vídeo até o final. Eu preciso te dar um aviso muito sério que pode te evitar de jogar dinheiro fora.`,
+        action: "Person looking directly into camera with a concerned, serious tone, bringing camera slightly closer."
+      },
+      {
+        title: "História Pessoal & A Dor",
+        timestamp: "1:00 - 2:00",
+        script: `Eu passei muito tempo sofrendo com ${targetPain}. Nada do que eu tentava funcionava de verdade, até que eu decidi testar o ${productName} por ${usageTime}.`,
+        action: "Person sitting comfortably, talking expressively with natural hand gestures, sincere emotional expression."
+      },
+      {
+        title: "Resultados e Experiência",
+        timestamp: "2:00 - 3:00",
+        script: `Depois de ${usageTime} usando direitinho todos os dias, a diferença em relação a ${mainBenefit} foi incrível. Valeu muito a pena para mim.`,
+        action: "Person smiling, showing a small bottle or container casually to the camera, relaxed and happy demeanour."
+      },
+      antiScamAlert ? {
+        title: "Alerta Anti-Golpe (Mercado Livre/Shopee/OLX)",
+        timestamp: "3:00 - 4:00",
+        script: `Mas atenção: CUIDADO onde vai comprar! NÃO compre o ${productName} no Mercado Livre, Shopee ou OLX. Tem muita falsificação nesses lugares. O original só é vendido no site oficial do fabricante.`,
+        action: "Person gesturing warning with hands, serious expression, pointing finger towards the camera for emphasis."
+      } : null,
+      {
+        title: "Call To Action (CTA)",
+        timestamp: "4:00 - 5:00",
+        script: `Para te ajudar, deixei o link do site oficial seguro bem no ${ctaLocation || 'primeiro comentário fixado'}. Deixe seu like no vídeo e inscreva-se no canal!`,
+        action: "Person smiling warmly, pointing downwards indicating the comments section below."
+      }
+    ].filter(Boolean);
+
+    // Monta o prompt do Veo 3 com a narração entre aspas acoplada ao prompt visual
+    const blocks = rawBlocks.map((b: any) => ({
+      title: b.title,
+      timestamp: b.timestamp,
+      script: b.script,
+      veoPrompt: `${baseVeoPrompt} ${b.action} Dialogue in Portuguese: "${b.script}"`
+    }));
+
+    return res.json({ blocks });
+  } catch (error) {
+    console.error('Erro no controller de Youtube Review:', error);
+    return res.status(500).json({ error: 'Erro interno ao processar o roteiro.' });
+  }
+};
+
 export const remodelarConteudo = async (req: Request, res: Response) => {
   try {
     const { transcricao, duracao, tipoVideo } = req.body;
@@ -219,11 +274,17 @@ export const gerarPrompts = async (req: Request, res: Response): Promise<void> =
       CRITICAL RULES:
       1. LANGUAGE: Detect the language of the 'Transcrição base' / 'Contexto'. Output EVERYTHING in that detected language.
       2. CONSISTENCY: All 'promptTexto' fields must have English camera/visual descriptions. Narration/speech must match the detected language.
-      3. VARIABILITY: Do not reuse templates. Create high-conversion, original scripts.
+      3. VARIABILITY: DO NOT REUSE THE EXACT TEMPLATES from the Rhythm reference. Create highly original, dynamic, and high-conversion scripts based on the product.
       4. VEO 3.1 COMPATIBILITY: Include the signature: ", ${BlackoutCameraOuAssinatura}${ehFaceless ? AssinaturaAudioFaceless : ', clear spoken studio audio, natural voice inflection, perfect lip-sync'}".
       5. FORMAT: No markdown, no explanations, strictly valid JSON.
+      
+      [DIRETRIZES DINÂMICAS DO USUÁRIO]:
+      ${diretrizTipoVideo}
+      ${instrucaoAmbienteDinamica}
+      ${diretrizLegendaReceita}
+      
+      CRITICAL FOR IMAGE: If "INSIGHTS VISUAIS DA IMAGEM REAL" are provided, your 'promptTexto' MUST rigorously incorporate those visual details so the generated video matches the uploaded model image perfectly.
     `;
-
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -269,7 +330,7 @@ export const gerarImagemInfluencerEstatica = async (req: Request, res: Response)
 
     const openai = new OpenAI({ apiKey: apiKeyFinal });
 
-    let detalhesEstritosProduto = `holding a premium aesthetic ${produto}.`;
+    let detalhesEstritosProduto = `holding a premium aesthetic ${produto}`;
 
     if (file) {
       const base64Image = file.buffer.toString('base64');
@@ -281,7 +342,7 @@ export const gerarImagemInfluencerEstatica = async (req: Request, res: Response)
             content: [
               {
                 type: "text",
-                text: "Analyze this product. If it's stationary, a book, or art supplies like Bobbie Goods, describe it exactly as 'a cute minimalist pastel-colored coloring stationary product, clean lineart, aesthetic'. Avoid creating words that sound like anatomy or literal translations. Keep it to one clean sentence."
+                text: "Describe only the main product/object in this image in one short, clean English sentence. Focus on its appearance, color, shape, and texture. Do not include apologies or refuse the prompt. Just describe the physical object."
               },
               {
                 type: "image_url",
@@ -292,9 +353,17 @@ export const gerarImagemInfluencerEstatica = async (req: Request, res: Response)
         ]
       });
 
-      const textoExtraido = visionResponse.choices[0].message.content;
-      if (textoExtraido) {
+      const textoExtraido = visionResponse.choices[0].message.content || "";
+      
+      // TRAVA DE SEGURANÇA: Verifica se a IA retornou uma recusa (unable, sorry, cannot, etc.)
+      const textoLower = textoExtraido.toLowerCase();
+      const recusaIA = textoLower.includes("unable") || textoLower.includes("sorry") || textoLower.includes("cannot");
+
+      if (textoExtraido && !recusaIA) {
         detalhesEstritosProduto = `holding and showcasing ${textoExtraido.trim()}`;
+      } else {
+        // Se a IA recusar, usamos o fallback seguro com o nome do produto
+        detalhesEstritosProduto = `holding a premium aesthetic ${produto}`;
       }
     }
 

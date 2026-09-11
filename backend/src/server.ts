@@ -11,6 +11,7 @@ import {
   remodelarConteudo
 } from './config/controllers/promptController';
 import { prisma } from './config/prisma';
+import { generateYoutubeReview } from './config/controllers/promptController';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -68,6 +69,7 @@ async function verificarAutenticacao(req: express.Request, res: express.Response
 app.post('/api/gerar-prompts', verificarAutenticacao, limitador, upload.single('imagem'), gerarPrompts);
 app.post('/api/gerar-imagem-estatica', verificarAutenticacao, upload.single('imagem'), gerarImagemInfluencerEstatica);
 app.post('/api/remodelar-conteudo', verificarAutenticacao, remodelarConteudo);
+app.post('/api/prompts/youtube-review', generateYoutubeReview);
 
 // ==========================================
 // 🎥 ENDPOINTS DO HISTÓRICO E BIBLIOTECA
